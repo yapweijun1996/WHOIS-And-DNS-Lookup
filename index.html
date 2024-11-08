@@ -306,8 +306,23 @@
 						const geoInfo = `IP: ${geoData.ip}\nLocation: ${geoData.city}, ${geoData.country}\nProvider: ${geoData.org}`;
 						document.getElementById('geo-info').textContent = geoInfo;
 						
+						// Extract latitude and longitude from geoData.loc (latitude,longitude format)
+						const [latitude, longitude] = geoData.loc.split(',');
+						
+						// Ensure the latitude and longitude are numbers
+						const lat = parseFloat(latitude);
+						const lon = parseFloat(longitude);
+						
+						if (isNaN(lat) || isNaN(lon)) {
+							document.getElementById('geo-info').textContent = 'Error: Invalid coordinates.';
+							return;
+						}
+						
 						// Initialize the mini map
-						const mapContainer = document.getElementById('map');
+						var mapContainer = document.getElementById('map');
+						
+						mapContainer.style.width = `100%`;
+						mapContainer.style.height = `200px`;
 						
 						// Check if a map already exists and remove it before initializing a new one
 						if (window.mapInstance) {
@@ -315,29 +330,47 @@
 							window.mapInstance.remove(); // Remove the existing map instance
 						}
 						
-						// Initialize a new map instance
-						const map = L.map('map').setView([geoData.loc.split(',')[0], geoData.loc.split(',')[1]], 13);
+						// Initialize a new map instance with the dynamic size
+						const map = L.map('map').setView([lat, lon], 13);
 						
 						// Save the map instance to window object so we can reference it later
 						window.mapInstance = map;
+						
+						
 						
 						// Add OpenStreetMap tile layer
 						L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 							attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 						}).addTo(map);
 						
-						// Add a marker for the location
-						L.marker([geoData.loc.split(',')[0], geoData.loc.split(',')[1]]).addTo(map)
+						// Add a marker for the location and bind a popup
+						const marker = L.marker([lat, lon]).addTo(map)
 						.bindPopup(`<b>${geoData.city}, ${geoData.country}</b><br>${geoData.org}`)
 						.openPopup();
 						
+						// Re-center map when marker is clicked
+						marker.on('click', function() {
+							map.setView([lat, lon], 13); // Recenter map on the marker when clicked
+						});
+						
+						// Center the map on the marker
+						map.setView([lat, lon], 13);  // Initial centering of map when loading
+						
+						// Make sure map has the right size after initial load
+						map.invalidateSize();
+						
 						mapContainer.style.display = 'block'; // Show map
+						
+						window.mapInstance.invalidateSize();
 					}
 				})
 				.catch(error => {
 					document.getElementById('geo-info').textContent = `Error fetching geolocation: ${error.message}`;
 				});
 			}
+			
+			
+			
 			
 			
 			function fetchReverseDns(ipAddress) {
