@@ -1,366 +1,379 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WHOIS & DNS Lookup</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        background-color: #f4f4f9;
-        margin: 0;
-        padding: 0;
-      }
-      .container {
-        width: 80%;
-        margin: 20px auto;
-        padding: 20px;
-        background-color: white;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        border-radius: 8px;
-      }
-      h1 {
-        text-align: center;
-        color: #333;
-      }
-      form {
-        display: flex;
-        justify-content: center;
-        margin-bottom: 20px;
-      }
-      input[type="text"] {
-        padding: 10px;
-        width: 60%;
-        font-size: 1rem;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        margin-right: 10px;
-      }
-      button {
-        padding: 10px 20px;
-        background-color: #007bff;
-        color: white;
-        font-size: 1rem;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-      button:hover {
-        background-color: #0056b3;
-      }
-      .loading {
-        font-size: 18px;
-        text-align: center;
-        color: #888;
-      }
-      .section-header {
-        font-size: 1.2rem;
-        font-weight: bold;
-        margin-top: 20px;
-      }
-      .error {
-        color: red;
-        font-weight: bold;
-      }
-      .card {
-        background-color: #f9f9f9;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 20px;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
-      }
-      .card.success {
-        border-color: #28a745;
-      }
-      .card.error {
-        border-color: #dc3545;
-        background-color: #f8d7da;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 10px;
-      }
-      th {
-        background-color: #f0f0f0;
-      }
-      pre {
-        background-color: #f0f0f0;
-        padding: 10px;
-        border-radius: 4px;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-      }
-      .highlight {
-        background-color: #d4edda;
-        color: #155724;
-      }
-      .error-highlight {
-        background-color: #f8d7da;
-        color: #721c24;
-      }
-      .tb_style {
-        table-layout: fixed;
-      }
-      .tb_style > tbody > tr > td {
-        box-sizing: border-box;
-      }
-      #map {
-        width: 100%;
-        height: 200px;
-        margin-top: 15px;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>WHOIS & DNS Lookup</h1>
-      <form id="lookup-form">
-        <table class="tb_style">
-          <tr>
-            <td><input style="width:100%; box-sizing: border-box;" type="text" id="domain" placeholder="Enter domain or IP address (e.g., www.example.com or 8.8.8.8)" required></td>
-            <td style="width:105px;" align="right">
-              <button type="submit">Look Up</button>
-            </td>
-          </tr>
-        </table>
-      </form>
-
-      <div id="results">
-        <div class="loading" id="loading-indicator" style="display:none;">Loading...</div>
-        <div class="card" id="whois-card">
-          <div class="section-header">WHOIS Information</div>
-          <pre id="whois-info">Enter a domain or IP to look up WHOIS data.</pre>
-        </div>
-        <div class="card" id="dns-card">
-          <div class="section-header">DNS Records</div>
-          <div id="dns-records"></div>
-        </div>
-        <div class="card" id="geo-card">
-          <div class="section-header">Geolocation Information</div>
-          <pre id="geo-info">Geolocation info will appear here.</pre>
-          <div id="map"></div> <!-- Mini map will appear here -->
-        </div>
-      </div>
-    </div>
-
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script>
-      const dnsRecordTypes = ['A', 'AAAA', 'MX', 'TXT', 'NS', 'CNAME', 'SPF', 'PTR', 'SRV'];
-
-      function isValidDomain(domain) {
-        const domainPattern = /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,6}$/;
-        return domainPattern.test(domain);
-      }
-
-      function isValidIP(ip) {
-        const ipPattern = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-        return ipPattern.test(ip);
-      }
-
-      document.getElementById('lookup-form').addEventListener('submit', function(event) {
-        event.preventDefault();
-
-        const input = document.getElementById('domain').value.trim();
-        let isDomain = false;
-        let isIP = false;
-
-        if (isValidDomain(input)) {
-          isDomain = true;
-        } else if (isValidIP(input)) {
-          isIP = true;
-        } else {
-          alert("Please enter a valid domain or IP address.");
-          return;
-        }
-
-        // Show loading indicator
-        document.getElementById('loading-indicator').style.display = 'block';
-        document.getElementById('whois-info').textContent = "Fetching data...";
-        document.getElementById('dns-records').innerHTML = "";
-        document.getElementById('geo-info').textContent = "";
-        document.getElementById('map').style.display = 'none'; // Hide map until data is fetched
-
-        if (isDomain) {
-          // Step 1: Get IP address for the domain
-          const dnsUrl = `https://dns.google/resolve?name=${input}&type=A`;
-          fetch(dnsUrl)
-            .then(response => response.json())
-            .then(dnsData => {
-              if (dnsData.Answer && dnsData.Answer[0]) {
-                const ipAddress = dnsData.Answer[0].data;
-                fetchGeolocationData(ipAddress);
-                fetchWhoisData(ipAddress);
-                fetchDnsRecords(input);
-                fetchReverseDns(ipAddress);
-              } else {
-                showError("No A record found for the domain. Please check the domain or try again later.");
-              }
-            })
-            .catch(error => {
-              showError(`Error fetching DNS data: ${error.message}. Please check your internet connection or try again later.`);
-            });
-        } else if (isIP) {
-          // Step 2: Direct WHOIS and DNS lookup for IP
-          fetchGeolocationData(input);
-          fetchWhoisData(input);
-          fetchDnsRecords(input);
-          fetchReverseDns(input);
-        }
-
-        // Hide loading indicator after fetch
-        document.getElementById('loading-indicator').style.display = 'none';
-      });
-
-      function fetchWhoisData(ipOrDomain) {
-        const whoisUrl = `https://ipinfo.io/${ipOrDomain}/json`;
-
-        fetch(whoisUrl)
-          .then(response => response.json())
-          .then(whoisData => {
-            if (whoisData.error) {
-              showError(`WHOIS data fetch failed: ${whoisData.error.message}`);
-            } else {
-              let whoisInfo = JSON.stringify(whoisData, null, 2);
-              if (whoisData.org) {
-                whoisInfo += `\nOrganization: ${whoisData.org}`;
-              }
-              if (whoisData.country) {
-                whoisInfo += `\nCountry: ${whoisData.country}`;
-              }
-              document.getElementById('whois-info').textContent = whoisInfo;
-              document.getElementById('whois-card').classList.add('success');
-              document.getElementById('whois-card').classList.remove('error');
-            }
-          })
-          .catch(error => {
-            showError(`Error fetching WHOIS data: ${error.message}`);
-          });
-      }
-
-      function fetchDnsRecords(domain) {
-        dnsRecordTypes.forEach(recordType => {
-          const recordUrl = `https://dns.google/resolve?name=${domain}&type=${recordType}`;
-          fetch(recordUrl)
-            .then(response => response.json())
-            .then(data => {
-              let dnsInfo = `No ${recordType} records found.`;
-              
-              // Check DNSSEC validation in response
-              if (data.Status === 0 && data.DNSSEC && data.DNSSEC === 'authenticated') {
-                dnsInfo += `\nDNSSEC: Enabled (Authenticated)`;
-              } else if (data.Status === 0) {
-                dnsInfo += `\nDNSSEC: Not enabled`;
-              }
-
-              if (data.Answer) {
-                dnsInfo = formatDnsRecords(data.Answer, recordType);
-              }
-              const recordSection = document.createElement('div');
-              recordSection.classList.add('section-header');
-              recordSection.textContent = `${recordType} Records`;
-              const recordContent = document.createElement('pre');
-              recordContent.textContent = dnsInfo;
-              document.getElementById('dns-records').appendChild(recordSection);
-              document.getElementById('dns-records').appendChild(recordContent);
-            })
-            .catch(error => {
-              const recordSection = document.createElement('div');
-              recordSection.classList.add('section-header');
-              recordSection.textContent = `${recordType} Records`;
-              const recordContent = document.createElement('pre');
-              recordContent.textContent = `Error fetching ${recordType} records: ${error.message}`;
-              document.getElementById('dns-records').appendChild(recordSection);
-              document.getElementById('dns-records').appendChild(recordContent);
-            });
-        });
-      }
-
-      function formatDnsRecords(records, type) {
-        return records.map(record => {
-          let recordInfo = `Value: ${record.data}`;
-          if (record.TTL) {
-            recordInfo += `\nTTL: ${record.TTL}`;
-          }
-          if (type === 'MX') {
-            recordInfo += `\nPriority: ${record.priority}`;
-          }
-          if (type === 'NS') {
-            recordInfo += `\nName Server: ${record.data}`;
-          }
-          return recordInfo;
-        }).join('\n\n');
-      }
-
-      function fetchGeolocationData(ipAddress) {
-        const geoUrl = `https://ipinfo.io/${ipAddress}/json`;
-
-        fetch(geoUrl)
-          .then(response => response.json())
-          .then(geoData => {
-            if (geoData.error) {
-              document.getElementById('geo-info').textContent = `Error fetching geolocation: ${geoData.error.message}`;
-            } else {
-              const geoInfo = `IP: ${geoData.ip}\nLocation: ${geoData.city}, ${geoData.country}\nProvider: ${geoData.org}`;
-              document.getElementById('geo-info').textContent = geoInfo;
-
-              // Initialize the mini map
-              const map = L.map('map').setView([geoData.loc.split(',')[0], geoData.loc.split(',')[1]], 13);
-
-              // Add OpenStreetMap tile layer
-              L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              }).addTo(map);
-
-              // Add a marker for the location
-              L.marker([geoData.loc.split(',')[0], geoData.loc.split(',')[1]]).addTo(map)
-                .bindPopup(`<b>${geoData.city}, ${geoData.country}</b><br>${geoData.org}`)
-                .openPopup();
-
-              document.getElementById('map').style.display = 'block'; // Show map
-            }
-          })
-          .catch(error => {
-            document.getElementById('geo-info').textContent = `Error fetching geolocation: ${error.message}`;
-          });
-      }
-
-      function fetchReverseDns(ipAddress) {
-        const reverseDnsUrl = `https://dns.google/resolve?name=${ipAddress}&type=PTR`;
-
-        fetch(reverseDnsUrl)
-          .then(response => response.json())
-          .then(data => {
-            if (data.Answer) {
-              const reverseDns = data.Answer.map(entry => entry.data).join('\n');
-              const ptrSection = document.createElement('div');
-              ptrSection.classList.add('section-header');
-              ptrSection.textContent = 'Reverse DNS (PTR) Records';
-              const ptrContent = document.createElement('pre');
-              ptrContent.textContent = `PTR Record: \n${reverseDns}`;
-              document.getElementById('dns-records').appendChild(ptrSection);
-              document.getElementById('dns-records').appendChild(ptrContent);
-            }
-          })
-          .catch(error => {
-            const ptrSection = document.createElement('div');
-            ptrSection.classList.add('section-header');
-            ptrSection.textContent = 'Reverse DNS (PTR) Records';
-            const ptrContent = document.createElement('pre');
-            ptrContent.textContent = `Error fetching PTR record: ${error.message}`;
-            document.getElementById('dns-records').appendChild(ptrSection);
-            document.getElementById('dns-records').appendChild(ptrContent);
-          });
-      }
-
-      function showError(message) {
-        document.getElementById('whois-info').textContent = message;
-        document.getElementById('whois-card').classList.add('error');
-        document.getElementById('whois-card').classList.remove('success');
-        document.getElementById('loading-indicator').style.display = 'none';
-      }
-    </script>
-  </body>
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>WHOIS & DNS Lookup</title>
+		<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				background-color: #f4f4f9;
+				margin: 0;
+				padding: 0;
+			}
+			.container {
+				width: 80%;
+				margin: 20px auto;
+				padding: 20px;
+				background-color: white;
+				box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+				border-radius: 8px;
+			}
+			h1 {
+				text-align: center;
+				color: #333;
+			}
+			form {
+				display: flex;
+				justify-content: center;
+				margin-bottom: 20px;
+			}
+			input[type="text"] {
+				padding: 10px;
+				width: 60%;
+				font-size: 1rem;
+				border: 1px solid #ccc;
+				border-radius: 4px;
+				margin-right: 10px;
+			}
+			button {
+				padding: 10px 20px;
+				background-color: #007bff;
+				color: white;
+				font-size: 1rem;
+				border: none;
+				border-radius: 4px;
+				cursor: pointer;
+			}
+			button:hover {
+				background-color: #0056b3;
+			}
+			.loading {
+				font-size: 18px;
+				text-align: center;
+				color: #888;
+			}
+			.section-header {
+				font-size: 1.2rem;
+				font-weight: bold;
+				margin-top: 20px;
+			}
+			.error {
+				color: red;
+				font-weight: bold;
+			}
+			.card {
+				background-color: #f9f9f9;
+				border: 1px solid #ddd;
+				border-radius: 8px;
+				padding: 15px;
+				margin-bottom: 20px;
+				box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+			}
+			.card.success {
+				border-color: #28a745;
+			}
+			.card.error {
+				border-color: #dc3545;
+				background-color: #f8d7da;
+			}
+			table {
+				width: 100%;
+				border-collapse: collapse;
+				margin-top: 10px;
+			}
+			th {
+				background-color: #f0f0f0;
+			}
+			pre {
+				background-color: #f0f0f0;
+				padding: 10px;
+				border-radius: 4px;
+				white-space: pre-wrap;
+				word-wrap: break-word;
+			}
+			.highlight {
+				background-color: #d4edda;
+				color: #155724;
+			}
+			.error-highlight {
+				background-color: #f8d7da;
+				color: #721c24;
+			}
+			.tb_style {
+				table-layout: fixed;
+			}
+			.tb_style > tbody > tr > td {
+				box-sizing: border-box;
+			}
+			#map {
+				width: 100%;
+				height: 200px;
+				margin-top: 15px;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<h1>WHOIS & DNS Lookup</h1>
+			<form id="lookup-form">
+				<table class="tb_style">
+					<tr>
+						<td><input style="width:100%; box-sizing: border-box;" type="text" id="domain" placeholder="Enter domain or IP address (e.g., www.example.com or 8.8.8.8)" required></td>
+						<td style="width:105px;" align="right">
+							<button type="submit">Look Up</button>
+						</td>
+					</tr>
+				</table>
+			</form>
+			
+			<div id="results">
+				<div class="loading" id="loading-indicator" style="display:none;">Loading...</div>
+				<div class="card" id="whois-card">
+					<div class="section-header">WHOIS Information</div>
+					<pre id="whois-info">Enter a domain or IP to look up WHOIS data.</pre>
+				</div>
+				<div class="card" id="dns-card">
+					<div class="section-header">DNS Records</div>
+					<div id="dns-records"></div>
+				</div>
+				<div class="card" id="geo-card">
+					<div class="section-header">Geolocation Information</div>
+					<pre id="geo-info">Geolocation info will appear here.</pre>
+					<div id="map"></div> <!-- Mini map will appear here -->
+				</div>
+			</div>
+		</div>
+		
+		<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+		<script>
+			const dnsRecordTypes = ['A', 'AAAA', 'MX', 'TXT', 'NS', 'CNAME', 'SPF', 'PTR', 'SRV'];
+			
+			function isValidDomain(domain) {
+				const domainPattern = /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,6}$/;
+				return domainPattern.test(domain);
+			}
+			
+			function isValidIP(ip) {
+				const ipPattern = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+				return ipPattern.test(ip);
+			}
+			
+			document.getElementById('lookup-form').addEventListener('submit', function(event) {
+				event.preventDefault();
+				
+				const input = document.getElementById('domain').value.trim();
+				let isDomain = false;
+				let isIP = false;
+				
+				if (isValidDomain(input)) {
+					isDomain = true;
+				} else if (isValidIP(input)) {
+					isIP = true;
+				} else {
+					alert("Please enter a valid domain or IP address.");
+					return;
+				}
+				
+				// Show loading indicator
+				document.getElementById('loading-indicator').style.display = 'block';
+				document.getElementById('whois-info').textContent = "Fetching data...";
+				document.getElementById('dns-records').innerHTML = "";
+				document.getElementById('geo-info').textContent = "";
+				document.getElementById('map').style.display = 'none'; // Hide map until data is fetched
+				
+				if (isDomain) {
+					// Step 1: Get IP address for the domain
+					const dnsUrl = `https://dns.google/resolve?name=${input}&type=A`;
+					fetch(dnsUrl)
+					.then(response => response.json())
+					.then(dnsData => {
+						if (dnsData.Answer && dnsData.Answer[0]) {
+							const ipAddress = dnsData.Answer[0].data;
+							fetchGeolocationData(ipAddress);
+							fetchWhoisData(ipAddress);
+							fetchDnsRecords(input);
+							fetchReverseDns(ipAddress);
+						} else {
+							showError("No A record found for the domain. Please check the domain or try again later.");
+						}
+					})
+					.catch(error => {
+						showError(`Error fetching DNS data: ${error.message}. Please check your internet connection or try again later.`);
+					});
+				} else if (isIP) {
+					// Step 2: Direct WHOIS and DNS lookup for IP
+					fetchGeolocationData(input);
+					fetchWhoisData(input);
+					fetchDnsRecords(input);
+					fetchReverseDns(input);
+				}
+				
+				// Hide loading indicator after fetch
+				document.getElementById('loading-indicator').style.display = 'none';
+			});
+			
+			function fetchWhoisData(ipOrDomain) {
+				const whoisUrl = `https://ipinfo.io/${ipOrDomain}/json`;
+				
+				fetch(whoisUrl)
+				.then(response => response.json())
+				.then(whoisData => {
+					if (whoisData.error) {
+						showError(`WHOIS data fetch failed: ${whoisData.error.message}`);
+					} else {
+						let whoisInfo = JSON.stringify(whoisData, null, 2);
+						if (whoisData.org) {
+							whoisInfo += `\nOrganization: ${whoisData.org}`;
+						}
+						if (whoisData.country) {
+							whoisInfo += `\nCountry: ${whoisData.country}`;
+						}
+						document.getElementById('whois-info').textContent = whoisInfo;
+						document.getElementById('whois-card').classList.add('success');
+						document.getElementById('whois-card').classList.remove('error');
+					}
+				})
+				.catch(error => {
+					showError(`Error fetching WHOIS data: ${error.message}`);
+				});
+			}
+			
+			function fetchDnsRecords(domain) {
+				dnsRecordTypes.forEach(recordType => {
+					const recordUrl = `https://dns.google/resolve?name=${domain}&type=${recordType}`;
+					fetch(recordUrl)
+					.then(response => response.json())
+					.then(data => {
+						let dnsInfo = `No ${recordType} records found.`;
+						
+						// Check DNSSEC validation in response
+						if (data.Status === 0 && data.DNSSEC && data.DNSSEC === 'authenticated') {
+							dnsInfo += `\nDNSSEC: Enabled (Authenticated)`;
+						} else if (data.Status === 0) {
+							dnsInfo += `\nDNSSEC: Not enabled`;
+						}
+						
+						if (data.Answer) {
+							dnsInfo = formatDnsRecords(data.Answer, recordType);
+						}
+						const recordSection = document.createElement('div');
+						recordSection.classList.add('section-header');
+						recordSection.textContent = `${recordType} Records`;
+						const recordContent = document.createElement('pre');
+						recordContent.textContent = dnsInfo;
+						document.getElementById('dns-records').appendChild(recordSection);
+						document.getElementById('dns-records').appendChild(recordContent);
+					})
+					.catch(error => {
+						const recordSection = document.createElement('div');
+						recordSection.classList.add('section-header');
+						recordSection.textContent = `${recordType} Records`;
+						const recordContent = document.createElement('pre');
+						recordContent.textContent = `Error fetching ${recordType} records: ${error.message}`;
+						document.getElementById('dns-records').appendChild(recordSection);
+						document.getElementById('dns-records').appendChild(recordContent);
+					});
+				});
+			}
+			
+			function formatDnsRecords(records, type) {
+				return records.map(record => {
+					let recordInfo = `Value: ${record.data}`;
+					if (record.TTL) {
+						recordInfo += `\nTTL: ${record.TTL}`;
+					}
+					if (type === 'MX') {
+						recordInfo += `\nPriority: ${record.priority}`;
+					}
+					if (type === 'NS') {
+						recordInfo += `\nName Server: ${record.data}`;
+					}
+					return recordInfo;
+				}).join('\n\n');
+			}
+			
+			function fetchGeolocationData(ipAddress) {
+				const geoUrl = `https://ipinfo.io/${ipAddress}/json`;
+				
+				fetch(geoUrl)
+				.then(response => response.json())
+				.then(geoData => {
+					if (geoData.error) {
+						document.getElementById('geo-info').textContent = `Error fetching geolocation: ${geoData.error.message}`;
+					} else {
+						const geoInfo = `IP: ${geoData.ip}\nLocation: ${geoData.city}, ${geoData.country}\nProvider: ${geoData.org}`;
+						document.getElementById('geo-info').textContent = geoInfo;
+						
+						// Initialize the mini map
+						const mapContainer = document.getElementById('map');
+						
+						// Check if a map already exists and remove it before initializing a new one
+						if (window.mapInstance) {
+							mapContainer.innerHTML = ''; // Clear the existing map container
+							window.mapInstance.remove(); // Remove the existing map instance
+						}
+						
+						// Initialize a new map instance
+						const map = L.map('map').setView([geoData.loc.split(',')[0], geoData.loc.split(',')[1]], 13);
+						
+						// Save the map instance to window object so we can reference it later
+						window.mapInstance = map;
+						
+						// Add OpenStreetMap tile layer
+						L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+							attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+						}).addTo(map);
+						
+						// Add a marker for the location
+						L.marker([geoData.loc.split(',')[0], geoData.loc.split(',')[1]]).addTo(map)
+						.bindPopup(`<b>${geoData.city}, ${geoData.country}</b><br>${geoData.org}`)
+						.openPopup();
+						
+						mapContainer.style.display = 'block'; // Show map
+					}
+				})
+				.catch(error => {
+					document.getElementById('geo-info').textContent = `Error fetching geolocation: ${error.message}`;
+				});
+			}
+			
+			
+			function fetchReverseDns(ipAddress) {
+				const reverseDnsUrl = `https://dns.google/resolve?name=${ipAddress}&type=PTR`;
+				
+				fetch(reverseDnsUrl)
+				.then(response => response.json())
+				.then(data => {
+					if (data.Answer) {
+						const reverseDns = data.Answer.map(entry => entry.data).join('\n');
+						const ptrSection = document.createElement('div');
+						ptrSection.classList.add('section-header');
+						ptrSection.textContent = 'Reverse DNS (PTR) Records';
+						const ptrContent = document.createElement('pre');
+						ptrContent.textContent = `PTR Record: \n${reverseDns}`;
+						document.getElementById('dns-records').appendChild(ptrSection);
+						document.getElementById('dns-records').appendChild(ptrContent);
+					}
+				})
+				.catch(error => {
+					const ptrSection = document.createElement('div');
+					ptrSection.classList.add('section-header');
+					ptrSection.textContent = 'Reverse DNS (PTR) Records';
+					const ptrContent = document.createElement('pre');
+					ptrContent.textContent = `Error fetching PTR record: ${error.message}`;
+					document.getElementById('dns-records').appendChild(ptrSection);
+					document.getElementById('dns-records').appendChild(ptrContent);
+				});
+			}
+			
+			function showError(message) {
+				document.getElementById('whois-info').textContent = message;
+				document.getElementById('whois-card').classList.add('error');
+				document.getElementById('whois-card').classList.remove('success');
+				document.getElementById('loading-indicator').style.display = 'none';
+			}
+		</script>
+	</body>
 </html>
