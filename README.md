@@ -12,6 +12,5 @@ This project allows users to perform WHOIS lookups, DNS record queries, and IP g
 - **Responsive Design**: The interface is responsive and works well on both desktop and mobile devices.<br>
 
 ## Demo
-
-You can try the tool live here: [Insert demo link if available]
+https://yapweijun1996.github.io/WHOIS-And-DNS-Lookup/
 
