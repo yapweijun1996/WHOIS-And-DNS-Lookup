@@ -14,3 +14,5 @@ This project allows users to perform WHOIS lookups, DNS record queries, and IP g
 ## Demo
 https://yapweijun1996.github.io/WHOIS-And-DNS-Lookup/
 
+## Preview
+![image](https://github.com/user-attachments/assets/310e7ac1-e11d-460a-ad33-11ef0b80934e)
